@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  log-monitor:
+    build: .
+    environment:
+      - LOG_PATHS=/var/log/radarr/radarr.log;/var/log/sonarr/sonarr.log;/var/log/readarr/readarr.log
+      - MQTT_SERVER=your_mqtt_server_address
+      - MQTT_TOPIC=your_mqtt_topic
+    volumes:
+      - /mnt/storage/seedbox/home/user/files/downloads:/seedbox
+      - /mnt/storage/local:/data
+      - /path/to/your/radarr.log:/var/log/radarr/radarr.log
+      - /path/to/your/sonarr.log:/var/log/sonarr/sonarr.log
+      - /path/to/your/readarr.log:/var/log/readarr.log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    network_mode: "host"
+
