@@ -1,10 +1,10 @@
 FROM python:3.9-slim
 
 # Install necessary packages
-RUN apt-get update && apt-get install -y \
-    unrar \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y rsync && \
+    apt-get install -y unrar-free && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 COPY requirements.txt .
