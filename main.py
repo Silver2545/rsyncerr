@@ -50,7 +50,7 @@ def transfer_file(source, destination):
 
 
 def rsync_transfer(source, destination, exclude_dirs=[]):
-    command = ['rsync', '-avP', '--chown=1001:1001', source, destination]
+    command = ['rsync', '-avP', '--chown=1001:1001', '--stats', source, destination]  # Add --stats option
     for exclude in exclude_dirs:
         command.extend(['--exclude', exclude])
     
@@ -59,6 +59,14 @@ def rsync_transfer(source, destination, exclude_dirs=[]):
     try:
         result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         logging.info(result.stdout)
+        
+        # Check if any files were transferred
+        if "Number of regular files transferred: 0" in result.stdout:
+            logging.info("No files transferred from /seedbox to /data.")
+            return False  # Set the flag to indicate no files were transferred
+        else:
+            logging.info("Files have been transferred from /seedbox to /data.")
+            return True  # Set the flag to indicate files were transferred
     except subprocess.CalledProcessError as e:
         logging.error(f"Rsync error: {e.stderr}")
         raise
@@ -159,37 +167,11 @@ def main():
         if not new_files_processed:
             logging.info("No new files processed. Running rsync with /seedbox/ to /data.")
             try:
-#                command = ['rsync', '-avP', '--chown=1001:1001', '/seedbox', '/data', '--exclude', 'sonarr', '--exclude', 'radarr']
-                rsync_transfer(source, destination, exclude_dirs)
-            except Exception as e:
-                logging.error(f"An error occurred during rsync: {e}")
-                logging.info(f"Running rsync command: {' '.join(command)}")
-                
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                
-                for line in iter(process.stdout.readline, ''):
-                    logging.info(line.strip())
-                for line in iter(process.stderr.readline, ''):
-                    logging.error(line.strip())
-
-                process.stdout.close()
-                process.stderr.close()
-                process.wait()
-
-                if process.returncode != 0:
-                    logging.error(f"Rsync failed with return code {process.returncode}")
-                    raise subprocess.CalledProcessError(process.returncode, command)
-
-                if process.returncode == 0:
-                    rsync_seedbox_to_data_files_processed = any("sent" in line for line in process.stdout)
-
+                rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
                 if not rsync_seedbox_to_data_files_processed:
-                    logging.info("No files transferred with rsync from /seedbox/ to /data. Running rsync with /torrents/ to /watch.")
-                    command = ['rsync', '-avP', '--chown=1001:1001', '/torrents', '/watch']
-                    logging.info(f"Running rsync command: {' '.join(command)}")
-                    
+                    command = ['rsync', '-avP', '--chown=1001:1001', '/torrents/', '/watch']
+                    logging.info(f"No files were transferred from /seedbox to /data. Running torrent rsync command: {' '.join(command)}")
                     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                    
                     for line in iter(process.stdout.readline, ''):
                         logging.info(line.strip())
                     for line in iter(process.stderr.readline, ''):
@@ -198,13 +180,9 @@ def main():
                     process.stdout.close()
                     process.stderr.close()
                     process.wait()
-
-                    if process.returncode != 0:
-                        logging.error(f"Rsync failed with return code {process.returncode}")
-                        raise subprocess.CalledProcessError(process.returncode, command)
-
+                    
             except Exception as e:
-                logging.error(f"Rsync error: {e}")
+                logging.error(f"An error occurred during rsync: {e}")
 
         logging.info("Sleeping for 5 minutes before checking again...")
         time.sleep(300)
