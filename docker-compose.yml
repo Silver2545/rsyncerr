@@ -1,22 +1,24 @@
-version: '3.8'
+version: '3'
 
 services:
-  log-monitor:
+  rsyncarr:
     build: .
+    container_name: rsyncarr
     environment:
-      - LOG_PATHS=/var/log/radarr/radarr.log;/var/log/sonarr/sonarr.log;/var/log/readarr/readarr.log
-      - MQTT_SERVER=your_mqtt_server_address
-      - MQTT_TOPIC=your_mqtt_topic
+      RADARR_API_URL: http://server.ip.address:7878
+      RADARR_API_KEY: YOUR-API-KEY
+      SONARR_API_URL: http://server.ip.address:8989
+      SONARR_API_KEY: YOUR-API-KEY
+#      LIDARR_API_URL: {LIDARR_API_URL}
+#      LIDARR_API_KEY: {LIDARR_API_KEY}
+#      READARR_API_URL: {READARR_API_URL}
+#      READARR_API_KEY: {READARR_API_KEY}
     volumes:
-      - /mnt/storage/seedbox/home/user/files/downloads:/seedbox
+      - /mnt/seedbox/files/downloads:/seedbox
       - /mnt/storage/local:/data
-      - /path/to/your/radarr.log:/var/log/radarr/radarr.log
-      - /path/to/your/sonarr.log:/var/log/sonarr/sonarr.log
-      - /path/to/your/readarr.log:/var/log/readarr.log
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    network_mode: "host"
+      - /mnt/seedbox/.config/transmission-daemon/torrents:/torrents
+      - /mnt/storage/local/watch:/watch
+      - /mnt/docker/rsyncarr:/app
+    network_mode: host
+
 
