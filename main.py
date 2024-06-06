@@ -57,18 +57,26 @@ def rsync_transfer(source, destination, exclude_dirs=[]):
     logging.info(f"Running rsync command: {' '.join(command)}")
     
     try:
-        result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        logging.info(result.stdout)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
-        # Check if any files were transferred
-        if "Number of regular files transferred: 0" in result.stdout:
-            logging.info("No files transferred from /seedbox to /data.")
-            return False  # Set the flag to indicate no files were transferred
-        else:
-            logging.info("Files have been transferred from /seedbox to /data.")
-            return True  # Set the flag to indicate files were transferred
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Rsync error: {e.stderr}")
+        # Log the output of rsync while it's running
+        for line in iter(process.stdout.readline, ''):
+            logging.info(line.strip())
+            if "Number of regular files transferred: 0" in line:  # Check within the loop
+                logging.info("No files transferred from /seedbox to /data.")
+                return False  # Set the flag to indicate no files were transferred
+        
+        for line in iter(process.stderr.readline, ''):
+            logging.error(line.strip())
+
+        process.wait()  # Wait for the process to finish
+
+        # If the loop completes without finding the condition, files have been transferred
+        logging.info("Files have been transferred from /seedbox to /data.")
+        return True  # Set the flag to indicate files were transferred
+
+    except Exception as e:
+        logging.error(f"Rsync error: {e}")
         raise
 
 
@@ -133,7 +141,7 @@ def process_records(records):
 def main():
     env_vars = {key: value for key, value in os.environ.items() if re.match(r'^(RADARR|SONARR|LIDARR|READARR)_API_(URL|KEY)$', key)}
 
-    source = '/seedbox'
+    source = '/seedbox/'
     destination = '/data'
     exclude_dirs = ['sonarr', 'radarr']
 
@@ -169,7 +177,8 @@ def main():
             try:
                 rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
                 if not rsync_seedbox_to_data_files_processed:
-                    command = ['rsync', '-avP', '--chown=1001:1001', '/torrents/', '/watch']
+#                    command = ['rsync', '-avP', '--chown=1001:1001', '/torrents/', '/watch']
+                    command = ['rsync', '-avP', '--chown=1001:1001', '--detect-renamed', '/torrents/', '/watch']
                     logging.info(f"No files were transferred from /seedbox to /data. Running torrent rsync command: {' '.join(command)}")
                     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     for line in iter(process.stdout.readline, ''):
