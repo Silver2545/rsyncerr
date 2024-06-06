@@ -138,6 +138,7 @@ def process_records(records):
                             logging.error(f"Unrar error: {e}")
     return files_processed
 
+
 def main():
     env_vars = {key: value for key, value in os.environ.items() if re.match(r'^(RADARR|SONARR|LIDARR|READARR)_API_(URL|KEY)$', key)}
 
@@ -173,14 +174,26 @@ def main():
                 logging.warning(f"{service}_API_URL or {service}_API_KEY environment variables are not provided. Skipping {service}.")
 
         if not new_files_processed:
-            logging.info("No new files processed. Running rsync with /seedbox/ to /data.")
             try:
-                rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
-                if not rsync_seedbox_to_data_files_processed:
-#                    command = ['rsync', '-avP', '--chown=1001:1001', '/torrents/', '/watch']
-                    command = ['rsync', '-avP', '--chown=1001:1001', '--detect-renamed', '/torrents/', '/watch']
-                    logging.info(f"No files were transferred from /seedbox to /data. Running torrent rsync command: {' '.join(command)}")
-                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                watch_dir = '/watch'
+                watch_files = [os.path.join(watch_dir, file) for file in os.listdir(watch_dir) if os.path.isfile(os.path.join(watch_dir, file))]
+                newest_file = max(watch_files, key=os.path.getmtime)
+
+                # Get the creation time of the newest file
+                newest_file_ctime = os.path.getctime(newest_file)
+
+                # Filter files in /torrents based on creation time
+                torrents_dir = '/torrents'
+                newer_files = [file for file in os.listdir(torrents_dir) if os.path.isfile(os.path.join(torrents_dir, file)) and os.path.getctime(os.path.join(torrents_dir, file)) > newest_file_ctime]
+
+                # Construct and execute rsync command for each file individually
+                for file in newer_files:
+                    src_file = os.path.join(torrents_dir, file)
+                    dest_file = os.path.join(watch_dir, file)
+                    rsync_command = ['rsync', '-avP', '--chown=1001:1001', src_file, dest_file]
+                    print("Rsync command:", ' '.join(rsync_command))
+                    logging.info(f"No files were transferred from /seedbox to /data. Running torrent rsync command: {' '.join(rsync_command)}")
+                    process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     for line in iter(process.stdout.readline, ''):
                         logging.info(line.strip())
                     for line in iter(process.stderr.readline, ''):
@@ -189,7 +202,6 @@ def main():
                     process.stdout.close()
                     process.stderr.close()
                     process.wait()
-                    
             except Exception as e:
                 logging.error(f"An error occurred during rsync: {e}")
 
@@ -198,5 +210,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
