@@ -177,7 +177,7 @@ def main():
             try:
                 rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
                 if not rsync_seedbox_to_data_files_processed:
-                
+                    logging.info(f"Attempt to locate the oldest file in the directory has begun")
                     watch_dir = '/watch'
                     watch_files = [os.path.join(watch_dir, file) for file in os.listdir(watch_dir) if os.path.isfile(os.path.join(watch_dir, file))]
                     newest_file = max(watch_files, key=os.path.getmtime)
@@ -188,6 +188,8 @@ def main():
                     # Filter files in /torrents based on creation time
                     torrents_dir = '/torrents'
                     newer_files = [file for file in os.listdir(torrents_dir) if os.path.isfile(os.path.join(torrents_dir, file)) and os.path.getctime(os.path.join(torrents_dir, file)) > newest_file_ctime]
+                    logging.info(f"The newest file found in {watch_dir} is {newest_file} which was created at {time.ctime(newest_file_ctime)}")
+
 
                     # Construct and execute rsync command for each file individually
                     for file in newer_files:
