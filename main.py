@@ -189,8 +189,8 @@ def main():
                     files_processed, downloading, downloading_titles = process_records(response.get('records', []), service) #Adjusted to track service
                     if downloading_titles:
                         logging.info("Files being downloaded:")
-                        for title, service_name in downloading_titles:
-                            logging.info(f"{service_name} - {title}")
+                        for title in downloading_titles:
+                            logging.info(f"{service} - {title}")
                     if files_processed:
                         new_files_processed = True
                 else:
@@ -209,7 +209,7 @@ def main():
                         dest_file = os.path.join('/watch', file)
                         rsync_command = ['rsync', '-avP', src_file, dest_file]
                         print("Rsync command:", ' '.join(rsync_command))
-                        logging.info(f"No files were transferred from /seedbox to /data. Running torrent rsync command: {' '.join(rsync_command)}")
+                        logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
                         
                         process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                         for line in iter(process.stdout.readline, ''):
