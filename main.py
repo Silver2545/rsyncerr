@@ -139,8 +139,8 @@ def process_records(records):
     return files_processed
 
 def find_new_torrents():
-    files_in_folder1 = set(os.listdir('/local/torrents'))
-    files_in_folder2 = set(os.listdir('/torrents'))
+    files_in_folder1 = set(file for file in os.listdir('/local/torrents') if file.endswith('.torrent'))
+    files_in_folder2 = set(file for file in os.listdir('/torrents') if file.endswith('.torrent'))
     new_torrents = files_in_folder2 - files_in_folder1
     return new_torrents
 
