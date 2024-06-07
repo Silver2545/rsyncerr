@@ -40,12 +40,16 @@ def transfer_file(source, destination):
     logging.info(f"Running rsync command: {' '.join(command)}")
     
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
-    for line in iter(process.stdout.readline, ''):
-        logging.info(line.strip())
-    for line in iter(process.stderr.readline, ''):
-        logging.error(line.strip())
+    pattern = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - INFO - \d+,\d+,\d+ \d+% \d+\.\d+MB/s \d+:\d+:\d+")
 
+    for line in iter(process.stdout.readline, ''):
+        if not pattern.match(line.strip()):
+            logging.info(line.strip())
+
+    for line in iter(process.stderr.readline, ''):
+        if not pattern.match(line.strip()):
+            logging.error(line.strip())    
+    
     process.stdout.close()
     process.stderr.close()
     process.wait()
