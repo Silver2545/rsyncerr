@@ -107,7 +107,7 @@ def process_records(records, service):
     downloading = False
     downloading_titles = []
     for record in records:
-        if (record.get('status') == 'downloading'
+        if (record.get('status') == 'downloading'):
             downloading = True
             downloading_titles.append(record.get('title', None))
  
