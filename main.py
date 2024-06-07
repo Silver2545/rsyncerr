@@ -6,13 +6,21 @@ import re
 import time
 
 # Set up logging to output to stdout and stderr
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+# LOG_LEVEL May be set via a docker-compose environment variable - DEBUG, INFO, WARN, ERROR, CRITICAL
+log_level = os.getenv('LOG_LEVEL', 'INFO')
+
+# Convert the log level string to its corresponding constant from the logging module
+log_level = getattr(logging, log_level.upper())
+
+# Configure the logging with the dynamically set log level
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=log_level)
 
 def api_request(url, api_key):
     if not re.match(r'^https?://', url):
         url = 'http://' + url
     full_url = f"{url}/api/v3/queue?page=1&pageSize=10&includeUnknownMovieItems=false&includeMovie=false&apikey={api_key}"
-    logging.info(f"Formatted URL: {full_url}")
+    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=10&includeUnknownMovieItems=false&includeMovie=false&apikey=API_KEY_REDACTED"
+    logging.debug(f"Formatted URL: {redacted_url}")
 
     try:
         response = requests.get(full_url)
@@ -28,7 +36,7 @@ def transfer_file(source, destination):
     if os.path.isdir(destination):
         destination += '/'
     
-    command = ['rsync', '-av', '--progress', '--chown=1001:1001', source, destination]
+    command = ['rsync', '-av', '--progress', source, destination]
     logging.info(f"Running rsync command: {' '.join(command)}")
     
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -50,7 +58,7 @@ def transfer_file(source, destination):
 
 
 def rsync_transfer(source, destination, exclude_dirs=[]):
-    command = ['rsync', '-avP', '--chown=1001:1001', '--stats', source, destination]  # Add --stats option
+    command = ['rsync', '-avP', '--stats', source, destination]  # Add --stats option
     for exclude in exclude_dirs:
         command.extend(['--exclude', exclude])
     
@@ -61,18 +69,21 @@ def rsync_transfer(source, destination, exclude_dirs=[]):
         
         # Log the output of rsync while it's running
         for line in iter(process.stdout.readline, ''):
-            logging.info(line.strip())
-            if "Number of regular files transferred: 0" in line:  # Check within the loop
-                logging.info("No files transferred from /seedbox to /data.")
-                return False  # Set the flag to indicate no files were transferred
+            logging.debug(line.strip())
+            if "Number of regular files transferred:" in line:
+                num_files_transferred = int(re.search(r'(\d+)', line).group(1))  # Extract the number of files transferred
+                if num_files_transferred == 0:
+                    logging.info("No files transferred from /seedbox to /data.")
+                    return False  # Set the flag to indicate no files were transferred
         
         for line in iter(process.stderr.readline, ''):
             logging.error(line.strip())
 
         process.wait()  # Wait for the process to finish
 
-        # If the loop completes without finding the condition, files have been transferred
-        logging.info("Files have been transferred from /seedbox to /data.")
+        # If the loop completes without finding the 0 condition, files have been transferred
+        if num_files_transferred is not None:
+            logging.info(f"{num_files_transferred} files have been transferred from /seedbox to /data.")
         return True  # Set the flag to indicate files were transferred
 
     except Exception as e:
@@ -91,14 +102,20 @@ def unrar_files(directory):
         except subprocess.CalledProcessError as e:
             logging.error(f"Unrar error: {e}")
 
-def process_records(records):
+def process_records(records, service):
     files_processed = False
+    downloading = False
+    downloading_titles = []
     for record in records:
+        if (record.get('status') == 'downloading'
+            downloading = True
+            downloading_titles.append(record.get('title', None))
+ 
         for status_message in record.get('statusMessages', []):
-            logging.info(f"Examining status message: {status_message}")
+            logging.debug(f"Examining status message: {status_message}")
 
             messages = status_message.get('messages', [])
-            logging.info(f"Messages list: {messages}")
+            logging.debug(f"Messages list: {messages}")
 
             for message in messages:
                 if "No files found are eligible for import" in message:
@@ -136,7 +153,7 @@ def process_records(records):
                             files_processed = True
                         except Exception as e:
                             logging.error(f"Unrar error: {e}")
-    return files_processed
+    return files_processed, downloading, downloading_titles
 
 def find_new_torrents():
     files_in_folder1 = set(file for file in os.listdir('/local/torrents') if file.endswith('.torrent'))
@@ -151,26 +168,29 @@ def main():
     destination = '/data'
     exclude_dirs = ['sonarr', 'radarr']
 
-    logging.info(f"Environment variables: {env_vars}")
-
     services = set(key.split('_API_')[0] for key in env_vars.keys())
 
     logging.info(f"Services to process: {services}")
+    downloading = False  # Reset downloading status before processing services
+    downloading_titles = []  # Reset downloading titles list before processing services
     while True:
         new_files_processed = False
-
         for service in services:
             api_url = env_vars.get(f"{service}_API_URL")
             api_key = env_vars.get(f"{service}_API_KEY")
 
-            logging.info(f"Processing {service} with URL: {api_url} and Key: {api_key}")
+            logging.info(f"Processing {service} with URL: {api_url}")
 
             if api_url and api_key:
-                logging.info(f"API Request sent to {service}.")
+                logging.debug(f"API Request sent to {service}.")
                 response = api_request(api_url, api_key)
                 if response:
-                    logging.info(f"API response received {response}.")
-                    files_processed = process_records(response.get('records', []))
+                    logging.debug(f"API response received {response}.")
+                    files_processed, downloading, downloading_titles = process_records(response.get('records', []), service) #Adjusted to track service
+                    if downloading_titles:
+                        logging.info("Files being downloaded:")
+                        for title, service_name in downloading_titles:
+                            logging.info(f"{service_name} - {title}")
                     if files_processed:
                         new_files_processed = True
                 else:
@@ -183,10 +203,11 @@ def main():
                 rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
                 if not rsync_seedbox_to_data_files_processed:
                     new_torrents = find_new_torrents()
+                    new_torrents = {file.replace('.torrent', '') for file in new_torrents if file.replace('.torrent', '') not in downloading_titles}
                     for file in new_torrents:
                         src_file = os.path.join('/torrents', file)
                         dest_file = os.path.join('/watch', file)
-                        rsync_command = ['rsync', '-avP', '--chown=1001:1001', src_file, dest_file]
+                        rsync_command = ['rsync', '-avP', src_file, dest_file]
                         print("Rsync command:", ' '.join(rsync_command))
                         logging.info(f"No files were transferred from /seedbox to /data. Running torrent rsync command: {' '.join(rsync_command)}")
                         
@@ -204,6 +225,8 @@ def main():
 
         logging.info("Sleeping for 5 minutes before checking again...")
         time.sleep(300)
+        downloading = False  # Reset downloading status before the next iteration
+        downloading_titles = []  # Reset downloading titles list before the next iteration
 
 if __name__ == "__main__":
     main()
