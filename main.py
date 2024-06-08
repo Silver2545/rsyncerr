@@ -233,21 +233,21 @@ def main():
                     new_torrents = find_new_torrents()
                     new_torrents = {file for file in new_torrents if not any(title in file for title in downloading_titles)}
                     for file in new_torrents:
-                        src_file = os.path.join('/torrents', file)
-                        dest_file = os.path.join('/watch', file)
-                        rsync_command = ['rsync', '-avP', src_file, dest_file]
-                        print("Rsync command:", ' '.join(rsync_command))
-                        logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
-                        
-                        process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                        for line in iter(process.stdout.readline, ''):
-                            logging.info(line.strip())
-                        for line in iter(process.stderr.readline, ''):
-                            logging.error(line.strip())
-
-                        process.stdout.close()
-                        process.stderr.close()
-                        process.wait()
+                         logging.info(f"New torrent detected but not transferred: {file}")
+#                        src_file = os.path.join('/torrents', file)
+#                        dest_file = os.path.join('/watch', file)
+#                        rsync_command = ['rsync', '-avP', src_file, dest_file]
+#                        print("Rsync command:", ' '.join(rsync_command))
+#                        logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
+#                        process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+#                        for line in iter(process.stdout.readline, ''):
+#                            logging.info(line.strip())
+#                        for line in iter(process.stderr.readline, ''):
+#                            logging.error(line.strip())
+#
+#                        process.stdout.close()
+#                        process.stderr.close()
+#                        process.wait()
             except Exception as e:
                 logging.error(f"An error occurred during rsync: {e}")
 
