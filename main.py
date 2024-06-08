@@ -207,10 +207,10 @@ def main():
                 rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
                 if not rsync_seedbox_to_data_files_processed:
                     new_torrents = find_new_torrents()
-                    new_torrents = {file.replace('.torrent', '') for file in new_torrents if file.replace('.torrent', '') not in downloading_titles}
+                    new_torrents = {file for file in new_torrents if not any(title in file for title in downloading_titles)}
                     for file in new_torrents:
-                        src_file = os.path.join('/torrents', file) + '.torrent'  # Append .torrent to src_file
-                        dest_file = os.path.join('/watch', file) + '.torrent'
+                        src_file = os.path.join('/torrents', file)
+                        dest_file = os.path.join('/watch', file)
                         rsync_command = ['rsync', '-avP', src_file, dest_file]
                         print("Rsync command:", ' '.join(rsync_command))
                         logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
