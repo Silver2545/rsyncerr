@@ -110,7 +110,9 @@ def process_records(records, service):
     files_processed = False
     downloading = False
     downloading_titles = []
+    current_title = None
     for record in records:
+        current_title = record.get('title')
         if (record.get('status') == 'downloading'):
             downloading = True
             downloading_titles.append(record.get('title', None))
@@ -131,6 +133,28 @@ def process_records(records, service):
                         try:
                             if transfer_file(source, destination):
                                 files_processed = True
+                                # Find new torrents and filter by the current title
+                                new_torrents = find_new_torrents()
+                                matching_torrents = [file for file in new_torrents if current_title in file]
+                                logging.info(f"Matching torrents for '{current_title}': {matching_torrents}")
+
+                                # Rsync matching torrents to the /watch directory
+                                for file in matching_torrents:
+                                    src_file = os.path.join('/torrents', file)
+                                    dest_file = os.path.join('/watch', file)
+                                    rsync_command = ['rsync', '-avP', src_file, dest_file]
+                                    logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
+                                    
+                                    process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                    for line in iter(process.stdout.readline, ''):
+                                        logging.info(line.strip())
+                                    for line in iter(process.stderr.readline, ''):
+                                        logging.error(line.strip())
+
+                                    process.stdout.close()
+                                    process.stderr.close()
+                                    process.wait()
+
                                 # Check if there are .rar files after transfer
                                 if any('.rar' in file for file in os.listdir(destination)):
                                     logging.info("Found .rar files after transfer. Initiating unrar process.")
