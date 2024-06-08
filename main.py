@@ -210,7 +210,7 @@ def main():
                     new_torrents = {file.replace('.torrent', '') for file in new_torrents if file.replace('.torrent', '') not in downloading_titles}
                     for file in new_torrents:
                         src_file = os.path.join('/torrents', file) + '.torrent'  # Append .torrent to src_file
-                        dest_file = os.path.join('/watch', file)
+                        dest_file = os.path.join('/watch', file) + '.torrent'
                         rsync_command = ['rsync', '-avP', src_file, dest_file]
                         print("Rsync command:", ' '.join(rsync_command))
                         logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
