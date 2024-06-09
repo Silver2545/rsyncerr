@@ -40,7 +40,7 @@ def transfer_file(source, destination):
     logging.info(f"Running rsync command: {' '.join(command)}")
     
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\s+[0-9]{1,3}%\s+[0-9]+(\.[0-9]+)?MB/s\s+(?:[0-8]?\d|9[0-8]):[0-5]\d:[0-5]\d$')
+    pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\s+[0-9]{1,3}%\s+[0-9]+(\.[0-9]+)?[kMG]B/s\s+(?:[0-8]?\d|9[0-8]):[0-5]\d:[0-5]\d$')
 
     for line in iter(process.stdout.readline, ''):
         if not pattern.match(line.strip()):
