@@ -18,8 +18,8 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 def api_request(url, api_key):
     if not re.match(r'^https?://', url):
         url = 'http://' + url
-    full_url = f"{url}/api/v3/queue?page=1&pageSize=10&includeUnknownMovieItems=false&includeMovie=false&apikey={api_key}"
-    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=10&includeUnknownMovieItems=false&includeMovie=false&apikey=API_KEY_REDACTED"
+    full_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=false&includeMovie=false&apikey={api_key}"
+    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=false&includeMovie=false&apikey=API_KEY_REDACTED"
     logging.debug(f"Formatted URL: {redacted_url}")
 
     try:
@@ -267,8 +267,8 @@ def main():
             except Exception as e:
                 logging.error(f"An error occurred during rsync: {e}")
 
-        logging.info("Sleeping for 5 minutes before checking again...")
-        time.sleep(300)
+        logging.info("Sleeping for 2 minutes before checking again...")
+        time.sleep(120)
         downloading = False  # Reset downloading status before the next iteration
         downloading_titles = []  # Reset downloading titles list before the next iteration
 
