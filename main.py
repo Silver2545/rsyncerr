@@ -30,7 +30,10 @@ def api_request(url, api_key):
         logging.error(f"API Request error: {e}")
         return None
 
+
 def transfer_file(source, destination):
+    milestones = {0, 25, 50, 75, 100}
+    logged_milestones = set()
     if os.path.isdir(source):
         source += '/'
     if os.path.isdir(destination):
@@ -43,13 +46,27 @@ def transfer_file(source, destination):
     pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\s+[0-9]{1,3}%\s+[0-9]+(\.[0-9]+)?[kMG]B/s\s+(?:[0-8]?\d|9[0-8]):[0-5]\d:[0-5]\d$')
 
     for line in iter(process.stdout.readline, ''):
-        if not pattern.match(line.strip()):
-            logging.info(line.strip())
+        stripped_line = line.strip()
+        match = pattern.match(stripped_line)
+        if not match:
+            logging.info(stripped_line)
+        else:
+            percentage = int(match.group(1))
+            if percentage in milestones and percentage not in logged_milestones:
+                logging.info(stripped_line)
+                logged_milestones.add(percentage)
 
     for line in iter(process.stderr.readline, ''):
-        if not pattern.match(line.strip()):
-            logging.error(line.strip())    
-    
+        stripped_line = line.strip()
+        match = pattern.match(stripped_line)
+        if not match:
+            logging.error(stripped_line)
+        else:
+            percentage = int(match.group(1))
+            if percentage in milestones and percentage not in logged_milestones:
+                logging.error(stripped_line)
+                logged_milestones.add(percentage)
+
     process.stdout.close()
     process.stderr.close()
     process.wait()
@@ -59,6 +76,7 @@ def transfer_file(source, destination):
         raise subprocess.CalledProcessError(process.returncode, command)
 
     return process.returncode == 0
+
 
 
 def rsync_transfer(source, destination, exclude_dirs=[]):
