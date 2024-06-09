@@ -32,7 +32,7 @@ def api_request(url, api_key):
 
 
 def transfer_file(source, destination):
-    milestones = {0, 25, 50, 75, 100}
+    milestones = {0, 5, 10, 25, 50, 75, 100}
     logged_milestones = set()
     if os.path.isdir(source):
         source += '/'
