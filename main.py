@@ -148,7 +148,7 @@ def process_records(records, service):
             downloading_titles.append(current_title)
 
         for status_message in record.get('statusMessages', []):
-            logging.info(f"Examining status message: {status_message} fpr tile {current_title}")
+            logging.info(f"Examining status message: {status_message} for title {current_title}")
 
             messages = status_message.get('messages', [])
             logging.debug(f"Messages list: {messages}")
@@ -173,7 +173,7 @@ def process_records(records, service):
                     except Exception as e:
                         logging.error(f"Error during transfer: {e}")
 
-                elif "Found archive file, might need to be extracted" in message or messages == ['Sample']: #While the process should unrar files as they are downloaded, if missed these two processes should catch it.
+                elif "Found archive file, might need to be extracted" in status_message.get('title', '') or messages == ['Sample']: # While the process should unrar files as they are downloaded, if missed these two processes should catch it.
                     output_path = record.get('outputPath', '')
                     if output_path:
                         logging.info(f"Potential rar file at {output_path}. Initiating unrar process.")
@@ -184,8 +184,8 @@ def process_records(records, service):
                             logging.error(f"Unrar error: {e}")
 
                 
-                elif "One or more episodes expected in this release were not imported" in message or \
-                        "Found matching series via grab history, but release was matched to series by ID." in message: #Errors may occur after transfer that relate to the file quality or series that are beyond the scope of this program.
+                elif "One or more episodes expected in this release were not imported" in status_message.get('title', '') or \
+                        "Found matching series via grab history, but release was matched to series by ID." in status_message.get('title', ''): #Errors may occur after transfer that relate to the file quality or series that are beyond the scope of this program.
 
                     new_torrents = find_new_torrents()
                     matching_torrents = [file for file in new_torrents if current_title in file]
