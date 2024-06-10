@@ -198,7 +198,8 @@ def process_records(records, service):
                             logging.error(f"Rsync error: {e}")
                     except Exception as e:
                         logging.error(f"Error during transfer: {e}")
-                elif "Manual import required." in message:
+
+                elif "Manual Import required." in message or "manual import required." in message.lower():
                     new_torrents = find_new_torrents()
                     matching_torrents = [file for file in new_torrents if current_title in file]
 
@@ -210,6 +211,7 @@ def process_records(records, service):
                     logging.info(f"The file {current_title} has an error not handled by this program. {error_torrent_info}")
                     
     return files_processed, downloading, downloading_titles
+
 
 def find_new_torrents():
     files_in_folder1 = set(file for file in os.listdir('/local/torrents') if file.endswith('.torrent'))
