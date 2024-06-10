@@ -18,8 +18,8 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 def api_request(url, api_key):
     if not re.match(r'^https?://', url):
         url = 'http://' + url
-    full_url = f"{url}/api/v3/queue?page=1&pageSize=10&includeUnknownMovieItems=false&includeMovie=false&apikey={api_key}"
-    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=10&includeUnknownMovieItems=false&includeMovie=false&apikey=API_KEY_REDACTED"
+    full_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=false&includeMovie=false&apikey={api_key}"
+    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=false&includeMovie=false&apikey=API_KEY_REDACTED"
     logging.debug(f"Formatted URL: {redacted_url}")
 
     try:
@@ -30,7 +30,10 @@ def api_request(url, api_key):
         logging.error(f"API Request error: {e}")
         return None
 
+
 def transfer_file(source, destination):
+    milestones = {0, 5, 10, 25, 50, 75, 100}
+    logged_milestones = set()
     if os.path.isdir(source):
         source += '/'
     if os.path.isdir(destination):
@@ -40,16 +43,30 @@ def transfer_file(source, destination):
     logging.info(f"Running rsync command: {' '.join(command)}")
     
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    pattern = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - INFO - \d+,\d+,\d+ \d+% \d+\.\d+MB/s \d+:\d+:\d+")
+    pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\s+(\d{1,3})%\s+\d+(\.\d+)?[kMG]B/s\s+(?:[0-8]?\d|9[0-8]):[0-5]\d:[0-5]\d$')
 
     for line in iter(process.stdout.readline, ''):
-        if not pattern.match(line.strip()):
-            logging.info(line.strip())
+        stripped_line = line.strip()
+        match = pattern.match(stripped_line)
+        if not match:
+            logging.info(stripped_line)
+        else:
+            percentage = int(match.group(1))
+            if percentage in milestones and percentage not in logged_milestones:
+                logging.info(stripped_line)
+                logged_milestones.add(percentage)
 
     for line in iter(process.stderr.readline, ''):
-        if not pattern.match(line.strip()):
-            logging.error(line.strip())    
-    
+        stripped_line = line.strip()
+        match = pattern.match(stripped_line)
+        if not match:
+            logging.error(stripped_line)
+        else:
+            percentage = int(match.group(1))
+            if percentage in milestones and percentage not in logged_milestones:
+                logging.error(stripped_line)
+                logged_milestones.add(percentage)
+
     process.stdout.close()
     process.stderr.close()
     process.wait()
@@ -59,7 +76,6 @@ def transfer_file(source, destination):
         raise subprocess.CalledProcessError(process.returncode, command)
 
     return process.returncode == 0
-
 
 def rsync_transfer(source, destination, exclude_dirs=[]):
     command = ['rsync', '-avP', '--stats', source, destination]  # Add --stats option
@@ -110,7 +126,9 @@ def process_records(records, service):
     files_processed = False
     downloading = False
     downloading_titles = []
+    current_title = None
     for record in records:
+        current_title = record.get('title')
         if (record.get('status') == 'downloading'):
             downloading = True
             downloading_titles.append(record.get('title', None))
@@ -131,6 +149,28 @@ def process_records(records, service):
                         try:
                             if transfer_file(source, destination):
                                 files_processed = True
+                                # Find new torrents and filter by the current title
+                                new_torrents = find_new_torrents()
+                                matching_torrents = [file for file in new_torrents if current_title in file]
+                                logging.info(f"Matching torrents for '{current_title}': {matching_torrents}")
+
+                                # Rsync matching torrents to the /watch directory
+                                for file in matching_torrents:
+                                    src_file = os.path.join('/torrents', file)
+                                    dest_file = os.path.join('/watch', file)
+                                    rsync_command = ['rsync', '-avP', src_file, dest_file]
+                                    logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
+                                    
+                                    process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                    for line in iter(process.stdout.readline, ''):
+                                        logging.info(line.strip())
+                                    for line in iter(process.stderr.readline, ''):
+                                        logging.error(line.strip())
+
+                                    process.stdout.close()
+                                    process.stderr.close()
+                                    process.wait()
+
                                 # Check if there are .rar files after transfer
                                 if any('.rar' in file for file in os.listdir(destination)):
                                     logging.info("Found .rar files after transfer. Initiating unrar process.")
@@ -209,26 +249,26 @@ def main():
                     new_torrents = find_new_torrents()
                     new_torrents = {file for file in new_torrents if not any(title in file for title in downloading_titles)}
                     for file in new_torrents:
-                        src_file = os.path.join('/torrents', file)
-                        dest_file = os.path.join('/watch', file)
-                        rsync_command = ['rsync', '-avP', src_file, dest_file]
-                        print("Rsync command:", ' '.join(rsync_command))
-                        logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
-                        
-                        process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                        for line in iter(process.stdout.readline, ''):
-                            logging.info(line.strip())
-                        for line in iter(process.stderr.readline, ''):
-                            logging.error(line.strip())
-
-                        process.stdout.close()
-                        process.stderr.close()
-                        process.wait()
+                         logging.info(f"New torrent detected but not transferred: {file}")
+#                        src_file = os.path.join('/torrents', file)
+#                        dest_file = os.path.join('/watch', file)
+#                        rsync_command = ['rsync', '-avP', src_file, dest_file]
+#                        print("Rsync command:", ' '.join(rsync_command))
+#                        logging.info(f"Running torrent rsync command: {' '.join(rsync_command)}")
+#                        process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+#                        for line in iter(process.stdout.readline, ''):
+#                            logging.info(line.strip())
+#                        for line in iter(process.stderr.readline, ''):
+#                            logging.error(line.strip())
+#
+#                        process.stdout.close()
+#                        process.stderr.close()
+#                        process.wait()
             except Exception as e:
                 logging.error(f"An error occurred during rsync: {e}")
 
-        logging.info("Sleeping for 5 minutes before checking again...")
-        time.sleep(300)
+        logging.info("Sleeping for 2 minutes before checking again...")
+        time.sleep(120)
         downloading = False  # Reset downloading status before the next iteration
         downloading_titles = []  # Reset downloading titles list before the next iteration
 
