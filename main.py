@@ -151,7 +151,7 @@ def process_records(records, service):
             downloading_titles.append(current_title)
 
         for status_message in record.get('statusMessages', []):
-            logging.info(f"Examining status message: {status_message} for title {current_title}")
+            logging.debug(f"Examining status message: {status_message} for title {current_title}")
 
             messages = status_message.get('messages', [])
             logging.debug(f"Messages list: {messages}")
@@ -262,13 +262,14 @@ def main():
         if not new_files_processed:
             try:
                 rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
-                if not rsync_seedbox_to_data_files_processed:
-                    new_torrents = find_new_torrents()
-                    new_torrents = {file for file in new_torrents if not any(title in file for title in downloading_titles)}
-                    for file in new_torrents:
-                         logging.info(f"New torrent detected but not transferred: {file}")
             except Exception as e:
                 logging.error(f"An error occurred during rsync: {e}")
+
+                
+        new_torrents = find_new_torrents()
+        new_torrents = {file for file in new_torrents if not any(title in file for title in downloading_titles)}
+        for file in new_torrents:
+            logging.info(f"New torrent detected but not transferred: {file}")
 
         logging.info("Sleeping for 2 minutes before checking again...")
         time.sleep(120)
