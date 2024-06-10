@@ -143,10 +143,10 @@ def process_records(records, service):
         status = record.get('status')
         output_path = record.get('outputPath', '')
         
-        if (record.get('status') == 'downloading'):
+        if status == 'downloading':
             downloading = True
-            downloading_titles.append(record.get('title', None))
- 
+            downloading_titles.append(current_title)
+
         for status_message in record.get('statusMessages', []):
             logging.debug(f"Examining status message: {status_message}")
 
@@ -157,13 +157,13 @@ def process_records(records, service):
                 if "No files found are eligible for import" in message:    #This is the standard error that should be encountered for items on the remote server that need to be transferred
                     logging.info(f"Import error found for {current_title}. Rsync transfer initiated.")
                     try:
-                            destination = output_path
-                            source = destination.replace('/data/', '/seedbox/')
+                        destination = output_path
+                        source = destination.replace('/data/', '/seedbox/')
                         try:
                             if rsync_transfer(source, destination):
                                 files_processed = True
                                 transfer_torrents(current_title)
-                                
+                        
                                 # Check if there are .rar files after transfer
                                 if any('.rar' in file for file in os.listdir(destination)):
                                     logging.info("Found .rar files after transfer. Initiating unrar process.")
@@ -196,7 +196,9 @@ def process_records(records, service):
                         error_torrent_info = f"The associated torrent {matching_torrents} has not been transferred."
 
                     logging.info(f"The file {current_title} has an error not handled by this program. {error_torrent_info}")
+                    
     return files_processed, downloading, downloading_titles
+
 
 def find_new_torrents():
     files_in_folder1 = set(file for file in os.listdir('/local/torrents') if file.endswith('.torrent'))
