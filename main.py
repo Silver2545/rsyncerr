@@ -148,7 +148,7 @@ def process_records(records, service):
             downloading_titles.append(current_title)
 
         for status_message in record.get('statusMessages', []):
-            logging.debug(f"Examining status message: {status_message}")
+            logging.info(f"Examining status message: {status_message} fpr tile {current_title}")
 
             messages = status_message.get('messages', [])
             logging.debug(f"Messages list: {messages}")
