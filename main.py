@@ -18,8 +18,8 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=lo
 def api_request(url, api_key):
     if not re.match(r'^https?://', url):
         url = 'http://' + url
-    full_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=false&includeMovie=false&apikey={api_key}"
-    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=false&includeMovie=false&apikey=API_KEY_REDACTED"
+    full_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=true&includeMovie=false&apikey={api_key}"
+    redacted_url = f"{url}/api/v3/queue?page=1&pageSize=100&includeUnknownMovieItems=true&includeMovie=false&apikey=API_KEY_REDACTED"
     logging.debug(f"Formatted URL: {redacted_url}")
 
     try:
@@ -132,6 +132,9 @@ def transfer_torrents(transfer_title_torrent): #Transfers torrents for the linke
         except Exception as e:
             logging.error(f"Torrent rsync error: {e}")
 
+import logging
+import os
+
 def process_records(records, service):
     files_processed = False
     downloading = False
@@ -153,8 +156,31 @@ def process_records(records, service):
             messages = status_message.get('messages', [])
             logging.debug(f"Messages list: {messages}")
 
+            # Check status_message title directly for specific conditions
+            if "Found archive file, might need to be extracted" in status_message.get('title', '') or messages == ['Sample']:
+                logging.info(f"Potential rar file at {output_path}. Initiating unrar process.")
+                if output_path:
+                    try:
+                        unrar_files(output_path)
+                        files_processed = True
+                    except Exception as e:
+                        logging.error(f"Unrar error: {e}")
+
+            elif "One or more episodes expected in this release were not imported" in status_message.get('title', '') or \
+                    "Found matching series via grab history, but release was matched to series by ID." in status_message.get('title', ''):
+                new_torrents = find_new_torrents()
+                matching_torrents = [file for file in new_torrents if current_title in file]
+
+                if not matching_torrents:
+                    error_torrent_info = "There is no associated torrent to transfer."
+                else:
+                    error_torrent_info = f"The associated torrent {matching_torrents} has not been transferred."
+
+                logging.info(f"The file {current_title} has an error not handled by this program. {error_torrent_info}")
+
+            # Process each message individually
             for message in messages:
-                if "No files found are eligible for import" in message:    #This is the standard error that should be encountered for items on the remote server that need to be transferred
+                if "No files found are eligible for import" in message:    
                     logging.info(f"Import error found for {current_title}. Rsync transfer initiated.")
                     try:
                         destination = output_path
@@ -172,21 +198,7 @@ def process_records(records, service):
                             logging.error(f"Rsync error: {e}")
                     except Exception as e:
                         logging.error(f"Error during transfer: {e}")
-
-                elif "Found archive file, might need to be extracted" in status_message.get('title', '') or messages == ['Sample']: # While the process should unrar files as they are downloaded, if missed these two processes should catch it.
-                    output_path = record.get('outputPath', '')
-                    if output_path:
-                        logging.info(f"Potential rar file at {output_path}. Initiating unrar process.")
-                        try:
-                            unrar_files(output_path)
-                            files_processed = True
-                        except Exception as e:
-                            logging.error(f"Unrar error: {e}")
-
-                
-                elif "One or more episodes expected in this release were not imported" in status_message.get('title', '') or \
-                        "Found matching series via grab history, but release was matched to series by ID." in status_message.get('title', ''): #Errors may occur after transfer that relate to the file quality or series that are beyond the scope of this program.
-
+                elif "Manual import required." in message:
                     new_torrents = find_new_torrents()
                     matching_torrents = [file for file in new_torrents if current_title in file]
 
@@ -198,7 +210,6 @@ def process_records(records, service):
                     logging.info(f"The file {current_title} has an error not handled by this program. {error_torrent_info}")
                     
     return files_processed, downloading, downloading_titles
-
 
 def find_new_torrents():
     files_in_folder1 = set(file for file in os.listdir('/local/torrents') if file.endswith('.torrent'))
