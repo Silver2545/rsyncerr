@@ -43,7 +43,8 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
     for exclude in exclude_dirs:
         command.extend(['--exclude', exclude])
     
-    logging.info(f"Running rsync command: {' '.join(command)}")
+    logging.info(f"Transferring files from {source}")
+    logging.debug(f"Running rsync command: {' '.join(command)}")
     
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     pattern = re.compile(r'^\d{1,3}(?:,\d{3})*\s+(\d{1,3})%\s+\d+(\.\d+)?[kMG]B/s\s+(?:[0-8]?\d|9[0-8]):[0-5]\d:[0-5]\d$')
