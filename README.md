@@ -1,2 +1,2 @@
-# rsyncarr
-Monitor the logs of Radarr, Sonarr, and Readarr to initiate rsync transfers from a seedbox to local storage.
+# rsyncerr
+Monitor the logs of Radarr, Sonarr, and similar programs to initiate rsync transfers from a seedbox to local storage.
