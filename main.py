@@ -55,8 +55,18 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
         return None
 
     num_files_transferred = None
+
+    skip_strings = [
+    "sending incremental file list",
+    "Number of files:",
+    "Number of created files:",
+    "Number of deleted files:"
+    ]
+    
     for line in iter(process.stdout.readline, ''):
         stripped_line = line.strip()
+        if any(skip_str in stripped_line for skip_str in skip_strings):
+            continue
         match = pattern.match(stripped_line)
         if not match:
             logging.info(stripped_line)
@@ -180,23 +190,8 @@ def process_records(records, service):
             for message in messages:
                 if "No files found are eligible for import" in message:    
                     logging.info(f"Import error found for {current_title}. Rsync transfer initiated.")
-                    try:
-                        destination = output_path
-                        source = destination.replace('/data/', '/seedbox/')
-                        try:
-                            if rsync_transfer(source, destination):
-                                files_processed = True
-                                transfer_torrents(current_title)
-                        
-                                # Check if there are .rar files after transfer
-                                if any('.rar' in file for file in os.listdir(destination)):
-                                    logging.info("Found .rar files after transfer. Initiating unrar process.")
-                                    unrar_files(destination)
-                        except Exception as e:
-                            logging.error(f"Rsync error: {e}")
-                    except Exception as e:
-                        logging.error(f"Error during transfer: {e}")
-
+                    full_transfer(current_title, output_path)
+                    
                 elif "Manual Import required." in message or "manual import required." in message.lower():
                     new_torrents = find_new_torrents()
                     matching_torrents = [file for file in new_torrents if current_title in file]
@@ -209,6 +204,21 @@ def process_records(records, service):
                     logging.info(f"The file {current_title} has an error not handled by this program. {error_torrent_info}")
                     
     return files_processed, downloading, downloading_titles
+
+def full_transfer(current_title, output_path)
+    try:
+        destination = output_path
+        source = destination.replace('/data/', '/seedbox/')
+        if rsync_transfer(source, destination):
+            files_processed = True
+            transfer_torrents(current_title)
+                        
+            # Check if there are .rar files after transfer
+            if any('.rar' in file for file in os.listdir(destination)):
+                logging.info("Found .rar files after transfer. Initiating unrar process.")
+                unrar_files(destination)
+    except Exception as e:
+        logging.error(f"Error during transfer: {e}")
 
 
 def find_new_torrents():
@@ -237,7 +247,7 @@ def main():
             api_url = env_vars.get(f"{service}_API_URL")
             api_key = env_vars.get(f"{service}_API_KEY")
 
-            logging.info(f"Processing {service} with URL: {api_url}")
+            logging.info(f"Processing {service} at: {api_url}")
 
             if api_url and api_key:
                 logging.debug(f"API Request sent to {service}.")
