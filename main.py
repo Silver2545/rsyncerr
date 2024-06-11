@@ -205,7 +205,7 @@ def process_records(records, service):
                     
     return files_processed, downloading, downloading_titles
 
-def full_transfer(current_title, output_path)
+def full_transfer(current_title, output_path):
     try:
         destination = output_path
         source = destination.replace('/data/', '/seedbox/')
