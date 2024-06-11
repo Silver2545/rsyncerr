@@ -112,7 +112,7 @@ def unrar_files(directory):
 def transfer_torrents(transfer_title_torrent): #Transfers torrents for the linked title
     new_torrents = find_new_torrents()
     matching_torrents = [file for file in new_torrents if transfer_title_torrent in file]
-    logging.info(f"Matching torrents for '{current_title}': {matching_torrents}")
+    logging.info(f"Matching torrents for '{transfer_title_torrent}': {matching_torrents}")
     for file in matching_torrents:
         src_file = os.path.join('/torrents', file)
         dest_file = os.path.join('/watch', file)
@@ -132,8 +132,6 @@ def transfer_torrents(transfer_title_torrent): #Transfers torrents for the linke
         except Exception as e:
             logging.error(f"Torrent rsync error: {e}")
 
-import logging
-import os
 
 def process_records(records, service):
     files_processed = False
