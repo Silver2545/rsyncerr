@@ -58,10 +58,20 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
     num_files_transferred = None
 
     skip_strings = [
-    "sending incremental file list",
-    "Number of files:",
-    "Number of created files:",
-    "Number of deleted files:"
+        "sending incremental file list",
+        "Number of files:",
+        "Number of created files:",
+        "Number of deleted files:",
+        "Total file size:",
+        "Total transferred file size:",
+        "Literal data:",
+        "Matched data:",
+        "File list size:",
+        "File list generation time",
+        "File list transfer time:",
+        "Total bytes sent:",
+        "Total bytes received:",
+        "total size is"
     ]
     
     for line in iter(process.stdout.readline, ''):
@@ -105,9 +115,9 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
 
     if num_files_transferred is not None:
         logging.info(f"{num_files_transferred} files have been transferred from /seedbox to /data.")
-        return True
+        return command, True
     
-    return False
+    return command, False
 
 def unrar_files(directory):
     rar_files = [f for f in os.listdir(directory) if f.endswith('.rar')]
@@ -219,7 +229,7 @@ def full_transfer(current_title, output_path):
                 logging.info("Found .rar files after transfer. Initiating unrar process.")
                 unrar_files(destination)
     except Exception as e:
-        logging.error(f"Error during transfer: {e}")
+        logging.error(f"Error during transfer {' '.join(command)}") : {e}")
 
 
 def find_new_torrents():
