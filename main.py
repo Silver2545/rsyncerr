@@ -43,7 +43,7 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
     for exclude in exclude_dirs:
         command.extend(['--exclude', exclude])
     
-    logging.info(f"Transferring files from {source}")
+    logging.info(f"Transferring files from {source} to {destination}")
     logging.debug(f"Running rsync command: {' '.join(command)}")
     
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -85,7 +85,7 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
                 num_files_transferred = int(re.search(r'(\d+)', stripped_line).group(1))
                 if num_files_transferred == 0:
                     logging.info("No files transferred from /seedbox to /data.")
-                    return False
+                    return command, False
         else:
             percentage = int(match.group(1))
             milestone = within_tolerance(percentage, milestones, tolerance)
@@ -118,6 +118,7 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
         return command, True
     
     return command, False
+
 
 def unrar_files(directory):
     rar_files = [f for f in os.listdir(directory) if f.endswith('.rar')]
@@ -217,19 +218,26 @@ def process_records(records, service):
     return files_processed, downloading, downloading_titles
 
 def full_transfer(current_title, output_path):
+    logging.info(f"Starting full transfer for {current_title} to {output_path}")
     try:
         destination = output_path
         source = destination.replace('/data/', '/seedbox/')
-        if rsync_transfer(source, destination):
+        command, success = rsync_transfer(source, destination)
+        if success:
             files_processed = True
+            logging.info(f"Rsync transfer successful for {current_title}")
             transfer_torrents(current_title)
-                        
+            
             # Check if there are .rar files after transfer
-            if any('.rar' in file for file in os.listdir(destination)):
+            if os.path.isdir(destination) and any('.rar' in file for file in os.listdir(destination)):
                 logging.info("Found .rar files after transfer. Initiating unrar process.")
                 unrar_files(destination)
+        else:
+            logging.warning(f"Rsync transfer failed or no files transferred for {current_title}")
     except Exception as e:
-        logging.error(f"Error during transfer {' '.join(command)}: {e}")
+        logging.error(f"Error during transfer: {e}")
+    
+    logging.info(f"Completed full transfer for {current_title}")
 
 
 def find_new_torrents():
