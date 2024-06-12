@@ -229,7 +229,7 @@ def full_transfer(current_title, output_path):
                 logging.info("Found .rar files after transfer. Initiating unrar process.")
                 unrar_files(destination)
     except Exception as e:
-        logging.error(f"Error during transfer {' '.join(command)}") : {e}")
+        logging.error(f"Error during transfer {' '.join(command)}: {e}")
 
 
 def find_new_torrents():
