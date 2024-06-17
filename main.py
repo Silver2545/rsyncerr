@@ -42,8 +42,7 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
         source += '/'
     if os.path.isdir(destination):
         destination += '/'
-
-    command = ['rsync', '-avP', '--progress', '--stats', source, destination]
+    command = ['rsync', '-avP', '--progress', '--stats', '--chown=' + PUID + ':' + GUID, source, destination]
     for exclude in exclude_dirs:
         command.extend(['--exclude', exclude])
     
