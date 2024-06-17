@@ -192,6 +192,8 @@ def process_records(records, service):
 
             elif "One or more episodes expected in this release were not imported" in status_message.get('title', '') or \
                     "Found matching series via grab history, but release was matched to series by ID." in status_message.get('title', ''):
+                logging.info(f"The file {current_title} has an error but may also not have been properly transferred. Checking transfer now.")
+                full_transfer(current_title, output_path)
                 new_torrents = find_new_torrents()
                 matching_torrents = [file for file in new_torrents if current_title in file]
 
