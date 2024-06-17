@@ -190,7 +190,7 @@ def process_records(records, service):
                         logging.error(f"Unrar error: {e}")
 
             elif "One or more episodes expected in this release were not imported" in status_message.get('title', '') or \
-                    "Found matching series via grab history, but release was matched to series by ID." in status_message.get('messages', ''):
+                    "Found matching series via grab history, but release was matched to series by ID." in status_message.get('title', ''):
                 logging.info(f"The file {current_title} has an error but may also not have been properly transferred. Checking transfer now.")
                 full_transfer(current_title, output_path)
                 new_torrents = find_new_torrents()
@@ -207,6 +207,10 @@ def process_records(records, service):
             for message in messages:
                 if "No files found are eligible for import" in message:    
                     logging.info(f"Import error found for {current_title}. Rsync transfer initiated.")
+                    full_transfer(current_title, output_path)
+
+                elif "Found matching series via grab history, but release was matched to series by ID." in message:
+                    logging.info(f"Potential sync error found for {current_title}. Rsync transfer initiated.")
                     full_transfer(current_title, output_path)
                     
                 elif "Manual Import required." in message or "manual import required." in message.lower():
