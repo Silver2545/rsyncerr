@@ -15,6 +15,10 @@ log_level = getattr(logging, log_level.upper())
 # Configure the logging with the dynamically set log level
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=log_level)
 
+# Assign User and Group IDs for RSYNC from environment variables or default to 1001:1001
+PUID = os.getenv('PUID', '1001')  # Default to '1001' if PUID is not set
+GUID = os.getenv('GUID', '1001')  # Default to '1001' if GUID is not set
+
 def api_request(url, api_key):
     if not re.match(r'^https?://', url):
         url = 'http://' + url
