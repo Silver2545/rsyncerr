@@ -4,6 +4,7 @@ import logging
 import subprocess
 import re
 import time
+import threading
 
 # Set up logging to output to stdout and stderr
 # LOG_LEVEL May be set via a docker-compose environment variable - DEBUG, INFO, WARN, ERROR, CRITICAL
@@ -122,6 +123,37 @@ def rsync_transfer(source, destination, exclude_dirs=[], milestones={0, 5, 25, 5
     
     return command, False
 
+def rsync_dry_run(source, destination, exclude_dirs=[]):
+    if os.path.isdir(source):
+        source += '/'
+    if os.path.isdir(destination):
+        destination += '/'
+
+    command = ['rsync', '-avP', '--dry-run', '--progress',, '--chown=' + PUID + ':' + GUID '--stats', source, destination]
+    for exclude in exclude_dirs:
+        command.extend(['--exclude', exclude])
+    
+    logging.info(f"Performing rsync dry-run from {source} to {destination}")
+    logging.debug(f"Running rsync dry-run command: {' '.join(command)}")
+    
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            logging.error(f"Rsync dry-run failed with return code {process.returncode}")
+            logging.error(stderr)
+            return []
+
+        file_list = []
+        for line in stdout.split('\n'):
+            if line.startswith('>f'):
+                file_list.append(line[12:])
+        
+        return file_list
+    except Exception as e:
+        logging.error(f"Rsync dry-run error: {e}")
+        return []
 
 def unrar_files(directory):
     rar_files = [f for f in os.listdir(directory) if f.endswith('.rar')]
@@ -189,8 +221,7 @@ def process_records(records, service):
                     except Exception as e:
                         logging.error(f"Unrar error: {e}")
 
-            elif "One or more episodes expected in this release were not imported" in status_message.get('title', '') or \
-                    "Found matching series via grab history, but release was matched to series by ID." in status_message.get('title', ''):
+            elif "One or more episodes expected in this release were not imported" in status_message.get('title', ''):
                 logging.info(f"The file {current_title} has an error but may also not have been properly transferred. Checking transfer now.")
                 full_transfer(current_title, output_path)
                 new_torrents = find_new_torrents()
@@ -226,6 +257,30 @@ def process_records(records, service):
                     
     return files_processed, downloading, downloading_titles
 
+def process_records_dry_run(records, service):
+    pending_tasks = []
+    for record in records:
+        current_title = record.get('title')
+        status = record.get('status')
+        output_path = record.get('outputPath', '')
+
+        for status_message in record.get('statusMessages', []):
+            messages = status_message.get('messages', [])
+
+            if "Found archive file, might need to be extracted" in status_message.get('title', '') or messages == ['Sample']:
+                pending_tasks.append({'type': 'unrar', 'title': current_title, 'path': output_path})
+            elif "One or more episodes expected in this release were not imported" in status_message.get('title', ''):
+                pending_tasks.append({'type': 'error', 'title': current_title, 'message': 'Error in import'})
+            for message in messages:
+                if "No files found are eligible for import" in message:    
+                    pending_tasks.append({'type': 'transfer', 'title': current_title, 'path': output_path})
+                elif "Found matching series via grab history, but release was matched to series by ID." in message:
+                    pending_tasks.append({'type': 'error', 'message': 'Title Match required', 'title': current_title, 'path': output_path})
+                elif "Manual Import required." in message or "manual import required." in message.lower():
+                    pending_tasks.append({'type': 'manual_import', 'title': current_title, 'message': 'Manual import required'})
+                    
+    return pending_tasks
+
 def full_transfer(current_title, output_path):
     logging.info(f"Starting full transfer for {current_title} to {output_path}")
     try:
@@ -254,8 +309,40 @@ def find_new_torrents():
     files_in_folder2 = set(file for file in os.listdir('/torrents') if file.endswith('.torrent'))
     new_torrents = files_in_folder2 - files_in_folder1
     return new_torrents
+    
+def dry_run_loop():
+    env_vars = {key: value for key, value in os.environ.items() if re.match(r'^[A-Z]+_API_(URL|KEY)$', key)}
+    services = set(key.split('_API_')[0] for key in env_vars.keys())
 
-def main():
+    all_pending_tasks = []
+
+    for service in services:
+        logging.info(f"Dry run for service: {service}")
+        api_url = env_vars.get(f"{service}_API_URL")
+        api_key = env_vars.get(f"{service}_API_KEY")
+
+        if api_url and api_key:
+            response = api_request(api_url, api_key)
+            if response:
+                pending_tasks = process_records_dry_run(response.get('records', []), service)
+                all_pending_tasks.extend(pending_tasks)
+    
+    new_torrents = find_new_torrents()
+    all_pending_tasks.extend([{'type': 'torrent', 'file': file} for file in new_torrents])
+    
+    source = '/seedbox/'
+    destination = '/data'
+    exclude_dirs = [service.lower() for service in services]
+    rsync_files = rsync_dry_run(source, destination, exclude_dirs)
+    all_pending_tasks.extend([{'type': 'rsync', 'file': file} for file in rsync_files])
+
+    logging.info("Dry run completed. Pending tasks:")
+    for task in all_pending_tasks:
+        logging.info(task)
+
+    return all_pending_tasks
+
+def main_loop():
     env_vars = {key: value for key, value in os.environ.items() if re.match(r'^[A-Z]+_API_(URL|KEY)$', key)} # Match environment variables that end with _API_URL or _API_KEY and capture the app name
     services = set(key.split('_API_')[0] for key in env_vars.keys())  # Extract unique service names from the matched environment variables
 
@@ -313,4 +400,13 @@ def main():
         downloading_titles = []  # Reset downloading titles list before the next iteration
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO)
+
+    main_thread = threading.Thread(target=main_loop)
+    dry_run_thread = threading.Thread(target=dry_run_loop)
+
+    main_thread.start()
+    dry_run_thread.start()
+
+    main_thread.join()
+    dry_run_thread.join()
