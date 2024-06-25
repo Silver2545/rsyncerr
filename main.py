@@ -134,28 +134,29 @@ def unrar_files(directory):
         except subprocess.CalledProcessError as e:
             logging.error(f"Unrar error: {e}")
 
-def transfer_torrents(transfer_title_torrent): #Transfers torrents for the linked title
+def transfer_torrents(transferred_titles):
     new_torrents = find_new_torrents()
-    matching_torrents = [file for file in new_torrents if transfer_title_torrent in file]
-    logging.info(f"Matching torrents for '{transfer_title_torrent}': {matching_torrents}")
-    for file in matching_torrents:
-        src_file = os.path.join('/torrents', file)
-        dest_file = os.path.join('/watch', file)
-        rsync_command = ['rsync', '-avP', src_file, dest_file]
-        logging.debug(f"Running torrent rsync command: {' '.join(rsync_command)}")
-        
-        try:
-            process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            for line in iter(process.stdout.readline, ''):
-                logging.debug(line.strip())
-            for line in iter(process.stderr.readline, ''):
-                logging.error(line.strip())
+    for transfer_title_torrent in transferred_titles:
+        matching_torrents = [file for file in new_torrents if transfer_title_torrent in file]
+        logging.info(f"Matching torrents for '{transfer_title_torrent}': {matching_torrents}")
+        for file in matching_torrents:
+            src_file = os.path.join('/torrents', file)
+            dest_file = os.path.join('/watch', file)
+            rsync_command = ['rsync', '-avP', src_file, dest_file]
+            logging.debug(f"Running torrent rsync command: {' '.join(rsync_command)}")
+            
+            try:
+                process = subprocess.Popen(rsync_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                for line in iter(process.stdout.readline, ''):
+                    logging.debug(line.strip())
+                for line in iter(process.stderr.readline, ''):
+                    logging.error(line.strip())
 
-            process.stdout.close()
-            process.stderr.close()
-            process.wait()
-        except Exception as e:
-            logging.error(f"Torrent rsync error: {e}")
+                process.stdout.close()
+                process.stderr.close()
+                process.wait()
+            except Exception as e:
+                logging.error(f"Torrent rsync error: {e}")
 
 
 def process_records(records, service):
@@ -270,6 +271,7 @@ def main():
     
     while True:
         new_files_processed = False
+        transferred_titles = []
         
         for service in services:
             api_url = env_vars.get(f"{service}_API_URL")
@@ -290,6 +292,7 @@ def main():
                             logging.info(f"{service} - {title}")
                     if files_processed:
                         new_files_processed = True
+                        transferred_titles.extend(downloading_titles)
                 else:
                     logging.warning(f"No response or empty response for {service}.")
             else:
@@ -297,11 +300,15 @@ def main():
 
         if not new_files_processed:
             try:
-                rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
+                command, rsync_seedbox_to_data_files_processed = rsync_transfer(source, destination, exclude_dirs)
+                if rsync_seedbox_to_data_files_processed:
+                    transferred_titles.append('Seedbox')
             except Exception as e:
                 logging.error(f"An error occurred during rsync: {e}")
 
-                
+        if transferred_titles:
+            transfer_torrents(transferred_titles)
+
         new_torrents = find_new_torrents()
         new_torrents = {file for file in new_torrents if not any(title in file for title in downloading_titles)}
         for file in new_torrents:
