@@ -176,6 +176,27 @@ def process_local_torrents():
                 except TransmissionError as e:
                     logging.error(f"Error stopping torrent: {name}, Error: {e}")
 
+            # Handle torrents with downloadDir set to /data/completed and 0% completion
+            elif download_dir == "/data/completed" and percent_done == 0:
+                files = fields.get('files', [])
+                for file in files:
+                    file_name = os.path.basename(file['name'])
+                    find_command = f'find /data -type f -name "{file_name}"'
+                    process = subprocess.Popen(find_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                    stdout, stderr = process.communicate()
+
+                    if stdout:
+                        new_location = os.path.dirname(stdout.strip())
+                        logging.info(f"File found for {name}: {stdout.strip()}")
+                        try:
+                            torrent.locate_data(new_location)
+                            logging.info(f"Download directory for torrent {name} updated to {new_location}")
+                        except TransmissionError as e:
+                            logging.error(f"Error updating download directory for {name}: {e}")
+                        break
+                    else:
+                        logging.warning(f"File not found for {name}: {file_name}")
+
 def check_remote_torrents(localTorrentList):
     remote_torrents_info = []
 
