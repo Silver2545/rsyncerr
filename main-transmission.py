@@ -127,19 +127,25 @@ def access_local():
                 torrentFileName = os.path.basename(torrentFilePath)
                 percent_done = fields.get('percentDone', 0) * 100
                 status = fields.get('status', 7)
+                error = fields.get('error', 0)
+                errorString = fields.get('errorString', '')
+                downloadDir = fields.get('downloadDir', '')
                 name = fields.get('name', 'Unknown')
                 info_hash = fields.get('hashString', '')  # Get the info_hash
                 localTorrentList.append({
                     'torrent_file': torrentFileName,
                     'percent_done': percent_done,
                     'status': status,
+                    'error': error,
+                    'error_string': errorString,
+                    'download_dir': downloadDir,
                     'name': name,
-                    'info_hash': info_hash  # Include info_hash in the dictionary
+                    'info_hash': info_hash
                 })
-#    logging.info(f"{localTorrentList}")
+    # logging.info(f"{localTorrentList}")
     return localTorrentList
 
-def resume_paused_torrents():
+def process_local_torrents():
     local_torrents = local.get_torrents()
     for torrent in local_torrents:
         if 'fields' in torrent.__dict__:
@@ -148,11 +154,12 @@ def resume_paused_torrents():
             status = fields.get('status', 7)
             name = fields.get('name', 'Unknown')
             info_hash = fields.get('hashString', '')  # Get the info_hash
+            error_string = fields.get('errorString', '')
 
             # Log warning for paused torrents at 0% completion
             if status == 0 and percent_done == 0:
                 logging.warning(f"Local Torrent is paused with no data: {name}")
-
+            
             # Resume torrents that are fully downloaded and paused
             elif status == 0 and percent_done >= 100:
                 try:
@@ -160,6 +167,14 @@ def resume_paused_torrents():
                     logging.info(f"Resumed torrent: {name}")
                 except TransmissionError as e:
                     logging.error(f"Error resuming torrent: {name}, Error: {e}")
+
+            # Pause torrents with error "Stopped peer doesn't exist"
+            elif error_string == 'Stopped peer doesn\'t exist':
+                try:
+                    local.stop_torrent(info_hash)  # Pause using info_hash
+                    logging.info(f"Torrent paused to clear error: {name}")
+                except TransmissionError as e:
+                    logging.error(f"Error stopping torrent: {name}, Error: {e}")
 
 def check_remote_torrents(localTorrentList):
     remote_torrents_info = []
@@ -313,9 +328,9 @@ def transfer_files(remote_torrents_info):
     return True
 
 def main():
-    log_torrent_info()
+#    log_torrent_info() # Activate when needing to check a single torrent to provide information on available fields
     local_torrent_list = access_local()
-    resume_paused_torrents()
+    process_local_torrents()
     remote_torrents_info = check_remote_torrents(local_torrent_list)
     transfer_files(remote_torrents_info)
 
