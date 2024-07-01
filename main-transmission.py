@@ -144,7 +144,7 @@ def access_local():
                 })
     # logging.info(f"{localTorrentList}")
     return localTorrentList
-
+    
 def process_local_torrents():
     local_torrents = local.get_torrents()
     for torrent in local_torrents:
@@ -155,11 +155,12 @@ def process_local_torrents():
             name = fields.get('name', 'Unknown')
             info_hash = fields.get('hashString', '')  # Get the info_hash
             error_string = fields.get('errorString', '')
+            downloadDir = fields.get('downloadDir', '')  # Ensure we use the same variable name
 
             # Log warning for paused torrents at 0% completion
             if status == 0 and percent_done == 0:
                 logging.warning(f"Local Torrent is paused with no data: {name}")
-            
+
             # Resume torrents that are fully downloaded and paused
             elif status == 0 and percent_done >= 100:
                 try:
@@ -169,7 +170,7 @@ def process_local_torrents():
                     logging.error(f"Error resuming torrent: {name}, Error: {e}")
 
             # Pause torrents with error "Stopped peer doesn't exist"
-            elif error_string == 'Stopped peer doesn\'t exist':
+            elif error_string == "Stopped peer doesn't exist":
                 try:
                     local.stop_torrent(info_hash)  # Pause using info_hash
                     logging.info(f"Torrent paused to clear error: {name}")
@@ -177,7 +178,7 @@ def process_local_torrents():
                     logging.error(f"Error stopping torrent: {name}, Error: {e}")
 
             # Handle torrents with downloadDir set to /data/completed and 0% completion
-            elif download_dir == "/data/completed" and percent_done == 0:
+            elif downloadDir == "/data/completed" and percent_done == 0:
                 files = fields.get('files', [])
                 for file in files:
                     file_name = os.path.basename(file['name'])
@@ -196,6 +197,7 @@ def process_local_torrents():
                         break
                     else:
                         logging.warning(f"File not found for {name}: {file_name}")
+                        
 
 def check_remote_torrents(localTorrentList):
     remote_torrents_info = []
