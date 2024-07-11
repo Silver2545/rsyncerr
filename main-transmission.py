@@ -1,30 +1,11 @@
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 import subprocess
 import re
 import shlex
 import time
 from transmission_rpc import Client, TransmissionError
-
-# Configure logging
-logging.basicConfig(filename='rsyncerr.log', level=logging.INFO, format='%(asctime)s - %(message)s')
-
-# Configure logging to log to both file and stdout
-log_formatter = logging.Formatter('%(asctime)s - %(message)s')
-
-# File Handler
-file_handler = logging.FileHandler('transmission_log.txt')
-file_handler.setFormatter(log_formatter)
-
-# Stream Handler for stdout
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(log_formatter)
-
-# Get the root logger and set the level
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
 
 # Set Environment Variables or use defaults
 REMOTE_HOST = os.getenv('REMOTE_HOST')
@@ -40,24 +21,70 @@ LOCAL_USERNAME = os.getenv('LOCAL_USERNAME', 'transmission')  # Default Transmis
 LOCAL_PASSWORD = os.getenv('LOCAL_PASSWORD', 'password')  # Default Transmission password
 PUID = os.getenv('PUID', '1001')
 GUID = os.getenv('GUID', '1001')
+os.environ['TIMEZONE'] = os.getenv('TIMEZONE', 'UTC')  # Default to UTC if TZ is not set
+time.tzset()
+
+# Define the log file and rotation settings
+log_file = 'rsyncerr.log'
+max_log_size = 10 * 1024 * 1024  # 10 MB
+backup_count = 5
+
+# Get the log level from the environment variable, default to INFO if not set
+log_level_env = os.getenv('LOG_LEVEL', 'INFO').upper()
+log_levels = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL
+}
+log_level = log_levels.get(log_level_env, logging.INFO)
+
+# Create a rotating file handler
+file_handler = RotatingFileHandler(log_file, maxBytes=max_log_size, backupCount=backup_count)
+log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(log_formatter)
+
+# Stream Handler for stdout
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(log_formatter)
+
+# Get the root logger and set the level
+logger = logging.getLogger()
+logger.setLevel(log_level)
+logger.addHandler(file_handler)
+logger.addHandler(stream_handler)
 
 # Connect to the Local Transmission instance
-local = Client(
-    host=LOCAL_HOST,
-    port=LOCAL_PORT,
-    username=LOCAL_USERNAME,
-    password=LOCAL_PASSWORD,
-)
+try:
+    local = Client(
+        host=LOCAL_HOST,
+        port=LOCAL_PORT,
+        username=LOCAL_USERNAME,
+        password=LOCAL_PASSWORD
+    )
+    logging.info("Successfully connected to the local Transmission instance.")
+except TransmissionError as e:
+    logging.error(f"Failed to connect to the local Transmission instance: {e}")
+except Exception as e:
+    logging.error(f"An unexpected error occurred: {e}")
 
 # Connect to the Remote Transmission instance
-remote = Client(
-    host=REMOTE_HOST,
-    port=REMOTE_PORT,
-    username=REMOTE_USERNAME,
-    password=REMOTE_PASSWORD,
-    protocol=REMOTE_PROTOCOL
-)
+try:
+    remote = Client(
+        host=REMOTE_HOST,
+        port=REMOTE_PORT,
+        username=REMOTE_USERNAME,
+        password=REMOTE_PASSWORD,
+		protocol=REMOTE_PROTOCOL
+    )
+    logging.info("Successfully connected to the remote Transmission instance.")
+except TransmissionError as e:
+    logging.error(f"Failed to connect to the remote Transmission instance: {e}")
+except Exception as e:
+    logging.error(f"An unexpected error occurred: {e}")
 
+# Strings to be skipped during rsync output
 skip_strings = [
     "sending incremental file list",
     "Number of files:",
@@ -98,6 +125,7 @@ def format_size(size_bytes):
     else:
         return f"{size_bytes / (1024 ** 3):.2f} GB"
 
+# Unused process but useful to list keys and values for actions
 def log_torrent_info():
     try:
         # Get list of torrents
@@ -116,6 +144,7 @@ def log_torrent_info():
     except TransmissionError as e:
         logging.error(f"Error fetching torrent information: {e}")
 
+# Obtain the current list of all local torrents
 def access_local():
     localTorrentList = []
     local_torrents = local.get_torrents()
@@ -142,10 +171,47 @@ def access_local():
                     'name': name,
                     'info_hash': info_hash
                 })
-    # logging.info(f"{localTorrentList}")
+    logging.debug(f"{localTorrentList}")
     return localTorrentList
-    
+
+# Locate the downloaded files for a torrent that has either been moved or had the incorrect location set
+def find_torrent_location(full_name):
+    file_name = os.path.basename(full_name)
+    find_command = f'find /data -type f -name "{file_name}"'
+    process = subprocess.Popen(find_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = process.communicate()
+
+    if stdout:
+        new_location = stdout.strip()
+        new_location = new_location.replace(full_name, '')  # Handle individual and multi-pack files
+        new_location = new_location.rstrip('/')
+        logging.info(f"File found: {stdout.strip()}")
+    else:
+        new_location = None
+        logging.warning(f"File not found: {file_name}")
+
+    return new_location
+
+# Correct the location for a torrent that has either been moved or had the incorrect location set
+def change_torrent_location(client, torrent_ids, new_location):
+    try:
+        client.change_torrent(
+            ids=torrent_ids,
+            location=new_location
+        )
+        print(f"Changed location of torrent(s) {torrent_ids} to {new_location}")
+    except transmission_rpc.TransmissionError as e:
+        print(f"Error changing location of torrent(s) {torrent_ids}: {e}")
+
+
 def process_local_torrents():
+# Unused but if uncommented allow a list of all available commands for Transmission
+#    local_client_methods = [method for method in dir(local) if callable(getattr(local, method))]
+#    print("Methods of local client object:", local_client_methods)
+
+#    local_client_attributes = local.__dict__
+#    print("Attributes of local client object:", local_client_attributes)
+
     local_torrents = local.get_torrents()
     for torrent in local_torrents:
         if 'fields' in torrent.__dict__:
@@ -153,51 +219,59 @@ def process_local_torrents():
             percent_done = fields.get('percentDone', 0) * 100
             status = fields.get('status', 7)
             name = fields.get('name', 'Unknown')
-            info_hash = fields.get('hashString', '')  # Get the info_hash
+            info_hash = fields.get('hashString', '')
             error_string = fields.get('errorString', '')
-            downloadDir = fields.get('downloadDir', '')  # Ensure we use the same variable name
+            downloadDir = fields.get('downloadDir', '')
 
-            # Log warning for paused torrents at 0% completion
-            if status == 0 and percent_done == 0:
-                logging.warning(f"Local Torrent is paused with no data: {name}")
+            logging.debug(f"Working on torrent {name}. Percent completed: {percent_done}. Status: {status} Error: {error_string} File location: {downloadDir}")
+
+#            # Log warning for paused torrents at 0% completion
+#            if status == 0 and percent_done == 0:
+#                logging.warning(f"Local Torrent is paused with no data: {name}")
+
 
             # Resume torrents that are fully downloaded and paused
-            elif status == 0 and percent_done >= 100:
+            if status == 0 and percent_done >= 100:
                 try:
+                    logging.info(f"Resuming torrent: {name}")
                     local.start_torrent(info_hash)  # Resume using info_hash
-                    logging.info(f"Resumed torrent: {name}")
                 except TransmissionError as e:
                     logging.error(f"Error resuming torrent: {name}, Error: {e}")
 
             # Pause torrents with error "Stopped peer doesn't exist"
-            elif error_string == "Stopped peer doesn't exist":
+            if "Stopped peer doesn't exist" in error_string:
                 try:
-                    local.stop_torrent(info_hash)  # Pause using info_hash
                     logging.info(f"Torrent paused to clear error: {name}")
+                    local.stop_torrent(info_hash)  # Pause using info_hash
                 except TransmissionError as e:
                     logging.error(f"Error stopping torrent: {name}, Error: {e}")
 
-            # Handle torrents with downloadDir set to /data/completed and 0% completion
-            elif downloadDir == "/data/completed" and percent_done == 0:
+            # Torrents either with no downloaded data or "No data found!" error likely need located
+            if status not in [1, 2] and ((percent_done == 0) or ("No data found!" in error_string)): # Adjusted to account for torrents verifying or queued to verify
+#            if (percent_done == 0) or ("No data found!" in error_string):
+                logging.info(f"Torrent {name} has downloaded {percent_done}%. {error_string} Attempting to correct.")
                 files = fields.get('files', [])
-                for file in files:
-                    file_name = os.path.basename(file['name'])
-                    find_command = f'find /data -type f -name "{file_name}"'
+                if files:
+                    # Find the largest file to avoid potential duplicate named sample or nfo files
+                    largest_file = max(files, key=lambda f: f['length'])
+                    full_name = largest_file['name']  # Get the full path from the largest file dictionary
+                    file_name = os.path.basename(full_name)
+                    find_command = f'find {LOCAL_DIRECTORY} -type f -name "{file_name}"'
                     process = subprocess.Popen(find_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                     stdout, stderr = process.communicate()
 
                     if stdout:
-                        new_location = os.path.dirname(stdout.strip())
-                        logging.info(f"File found for {name}: {stdout.strip()}")
+                        found_file_path = stdout.strip()
+                        new_location = found_file_path.replace(full_name, '').rstrip('/')
                         try:
-                            torrent.locate_data(new_location)
+                            local.move_torrent_data(info_hash, new_location)
                             logging.info(f"Download directory for torrent {name} updated to {new_location}")
+                            local.verify_torrent(info_hash) #Start the verification process on the newly moved torrent
                         except TransmissionError as e:
                             logging.error(f"Error updating download directory for {name}: {e}")
-                        break
                     else:
                         logging.warning(f"File not found for {name}: {file_name}")
-                        
+
 
 def check_remote_torrents(localTorrentList):
     remote_torrents_info = []
@@ -214,10 +288,9 @@ def check_remote_torrents(localTorrentList):
             relativeDir = fields.get('downloadDir', '').replace(REMOTE_DIRECTORY, '').lstrip('/')
             remoteTorrentFilePath = fields.get('torrentFile', '')
             remoteTorrentFileName = os.path.basename(remoteTorrentFilePath)
-
             # Check if the torrent file name (without extension) exists in localTorrentList
             if any(torrent['torrent_file'] == remoteTorrentFileName for torrent in localTorrentList):
-                logging.info(f"{remoteTorrentName} has already been transferred to the local server.")
+                logging.debug(f"{remoteTorrentName} has already been transferred to the local server.")
                 continue
 
             # Check if torrent is fully downloaded and seeding (status 6)
@@ -231,7 +304,7 @@ def check_remote_torrents(localTorrentList):
                     'remote_torrent_file_path': remoteTorrentFilePath,
                     'remote_torrent_file_name': remoteTorrentFileName
                 }
-                logging.info(f"Adding torrent to transfer list: {torrent_info}")
+                logging.info(f"Adding torrent to transfer list: {remoteTorrentName}")
                 remote_torrents_info.append(torrent_info)
             else:
                 logging.info(f"Torrent {remoteTorrentName} is not yet ready for transfer (Status: {status}, Progress: {percent_done}%)")
@@ -280,19 +353,21 @@ def transfer_files(remote_torrents_info):
 #        source = shlex.quote(source)
 #        destination = shlex.quote(destination)
         # Always use double quotes around the paths
-        source = f'"{source}"'
-        destination = f'"{destination}"'
+        rsync_source = f'"{source}"'
+        rsync_destination = f'"{destination}"'
 
         # Create needed directories for rsync
         destination_dir = os.path.dirname(destination.strip('"'))  # Remove quotes for os.path functions
+#        logging.info(f"destination is {destination} for future unrar info")
+#        logging.info(f"destination_dir is {destination_dir} for future unrar info")
         if not os.path.exists(destination_dir):
             os.makedirs(destination_dir)
             os.chown(destination_dir, int(PUID), int(GUID))
 
 
-        rsync_command = f"rsync -avP --progress --stats --chown={PUID}:{GUID} {source} {destination}"
+        rsync_command = f"rsync -avP --progress --stats --chown={PUID}:{GUID} {rsync_source} {rsync_destination}"
 
-        logging.info(f"Rsync command: {rsync_command}")
+        logging.debug(f"Rsync command: {rsync_command}")
 
         process = subprocess.Popen(rsync_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
@@ -335,6 +410,13 @@ def transfer_files(remote_torrents_info):
         process.stderr.close()
         process.wait()
 
+
+        if os.path.isdir(destination):
+            logging.debug(f"Checking {destination} for potential rar files to be un-rared")
+            unrar_files(destination)
+        else:
+            logging.debug(f"{destination} not being checked for rar files. Not a directory.")
+
         if process.returncode != 0:
             logging.error(f"Rsync failed with return code {process.returncode}")
             logging.error(f"Failed rsync command: {rsync_command}")
@@ -344,9 +426,9 @@ def transfer_files(remote_torrents_info):
         logging.info(f"{num_files_transferred} files have been transferred from Remote to Local. Now transferring the .torrent file")
         transfer_torrent(torrent_info['remote_torrent_file_path'], torrent_info['relative_dir'], torrent_info['remote_torrent_file_name'])
 
-        # Check and unrar files if .rar files are present
-        destination_dir = os.path.join(LOCAL_DIRECTORY, torrent_info['relative_dir'])
-        unrar_files(destination_dir)
+#        # Check and unrar files if .rar files are present
+#        destination_dir = os.path.join(LOCAL_DIRECTORY, torrent_info['relative_dir'])
+#        unrar_files(destination_dir)
 
     return True
 
@@ -360,6 +442,5 @@ def main():
 if __name__ == "__main__":
     while True:
         main()
-        logging.info(f"Sleeping for 1 minute before resuming")
-        time.sleep(60)
-
+        logging.info(f"Sleeping for 5 minutes before resuming")
+        time.sleep(600)
