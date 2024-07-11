@@ -7,15 +7,13 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir transmission-rpc==7.0.10
 
 # Copy the monitoring script
-COPY monitor.py /app/monitor.py
+COPY main.py /app/main.py
 
 # Set the working directory
 WORKDIR /app
 
 # Run the monitoring script
-CMD ["python", "monitor.py"]
-
+CMD ["python", "main.py"]
